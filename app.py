@@ -5,7 +5,8 @@ import time
 app = Flask(__name__)
 db.create_tables()
 
-# Memorie pentru Brute Force
+# --- MEMORIE PENTRU BRUTE FORCE ---
+# Dicționar global: { 'IP_ADRESA': [timp1, timp2, timp3...] }
 login_attempts = {}
 
 HTML_PAGE = """
@@ -19,9 +20,9 @@ HTML_PAGE = """
         input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; }
         button { width: 96%; padding: 10px; background-color: #e74c3c; color: white; border: none; cursor: pointer; border-radius: 4px; }
         button:hover { background-color: #c0392b; }
-        .msg { margin-top: 15px; font-weight: bold; }
-        .safe { color: red; }
-        .normal { color: #e67e22; }
+        .msg { margin-top: 15px; font-weight: bold; padding: 10px; border-radius: 5px;}
+        .alert { background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; }
+        .info { background-color: #e6f7ff; color: #0066cc; border: 1px solid #0066cc; }
     </style>
 </head>
 <body>
@@ -38,77 +39,88 @@ HTML_PAGE = """
         </form>
         
         {% if message %}
-            <p class="msg {{ msg_class }}">{{ message }}</p>
+            <div class="msg {{ msg_class }}">{{ message }}</div>
         {% endif %}
     </div>
 </body>
 </html>
 """
 
+def check_brute_force(ip_address):
+    current_time = time.time()
+    
+    # 1. Dacă e prima dată când vedem acest IP, facem o listă goală
+    if ip_address not in login_attempts:
+        login_attempts[ip_address] = []
+        
+    # 2. Curățăm lista: Păstrăm doar încercările din ultimele 10 secunde
+    # (Ștergem tot ce e mai vechi de 10 secunde)
+    login_attempts[ip_address] = [t for t in login_attempts[ip_address] if current_time - t < 10]
+    
+    # 3. Adăugăm tentativa curentă
+    login_attempts[ip_address].append(current_time)
+    
+    # 4. Verificăm limita: Mai mult de 5 încercări în 10 secunde?
+    if len(login_attempts[ip_address]) > 5:
+        return True # ESTE BRUTE FORCE
+    
+    return False # E curat
+
 def analyze_request(req):
-    # 1. Luăm datele CURATE (doar textul introdus)
     user_input = req.form.get('username', '').lower()
     pass_input = req.form.get('password', '').lower()
     full_text = user_input + " " + pass_input
     
-    # 2. MALWARE CHECK (Verificăm extensia fișierului)
+    # MALWARE
     if 'file_upload' in req.files:
         file = req.files['file_upload']
         if file.filename != '':
             ext = file.filename.split('.')[-1].lower()
-            # Lista neagră de extensii
-            if ext in ['exe', 'bat', 'sh', 'vbs', 'py', 'php']:
+            if ext in ['exe', 'bat', 'sh', 'vbs', 'py']:
                 db.add_incident(4, "Upload Form", f"Malware blocat: {file.filename}", "Blocat")
-                return True, "Fișier Malițios Detectat (Malware)!"
+                return True, "Fișier Malițios Detectat!"
 
-    # 3. SQL INJECTION (Doar tipare clare de atac)
-    # Căutăm secvențe specifice, nu doar ghilimele simple
+    # SQL INJECTION
     sql_patterns = ["' or '1'='1", "' or 1=1", "union select", "drop table", "admin' --"]
     for pattern in sql_patterns:
         if pattern in full_text:
             db.add_incident(2, "Login Form", f"SQL Injection: {pattern}", "Critic")
             return True, "Tentativă SQL Injection!"
 
-    # 4. XSS (Scripting)
-    if "<script>" in full_text or "alert(" in full_text:
+    # XSS
+    if "<script>" in full_text:
         db.add_incident(3, "Login Form", "XSS Script Detectat", "Critic")
         return True, "Atac XSS Detectat!"
-
-    # 5. Phishing / Suspicious User
-    if "admin" == user_input and "1234" in pass_input:
-        # Doar un exemplu: admin cu parola slaba e considerat risc
-        db.add_incident(1, "Login Form", "Tentativă Login Admin (Weak Pass)", "Investigație")
-        return True, "Acces Admin Monitorizat."
 
     return False, None
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
     message = ""
-    msg_class = "normal"
+    msg_class = "info"
     
-    # Brute Force Check (Simplificat)
+    # Preluăm IP-ul utilizatorului
     ip = request.remote_addr
-    # (Logica de brute force ar veni aici, dar o păstrăm simplă pt debugging acum)
 
     if request.method == 'POST':
+        # PASUL 1: Verificăm Brute Force ÎNAINTE de orice altceva
+        if check_brute_force(ip):
+            print(f"!!! BRUTE FORCE DETECTAT DE PE {ip} !!!")
+            # Scriem în baza de date cu ID-ul 5 (Brute Force)
+            db.add_incident(5, f"IP: {ip}", "Viteză logare suspectă (Brute Force)", "Blocat Automat")
+            return render_template_string(HTML_PAGE, message="⛔ PREA MULTE ÎNCERCĂRI! IP BLOCAT TEMPORAR.", msg_class="alert")
+
+        # PASUL 2: Analizăm conținutul (SQL, Malware etc)
         is_attack, reason = analyze_request(request)
         
         if is_attack:
-            print(f"!!! ATAC: {reason}")
-            message = f"⛔ ALARMĂ DE SECURITATE: {reason}"
-            msg_class = "safe"
+            message = f"ALARMĂ: {reason}"
+            msg_class = "alert"
         else:
-            # Aici ajunge logarea normală greșită
             message = "Utilizator sau parolă incorectă."
-            msg_class = "normal"
+            msg_class = "info"
 
     return render_template_string(HTML_PAGE, message=message, msg_class=msg_class)
-
-@app.route('/admin')
-def scan():
-    db.add_incident(6, "URL /admin", "Scanning Vulnerability", "Monitorizare")
-    return "<h1>403 Forbidden</h1>"
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
