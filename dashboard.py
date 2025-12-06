@@ -52,3 +52,39 @@ else:
     # 3. Tabel Detaliat (Jos)
     st.subheader("Registru Atacuri")
     st.dataframe(df, use_container_width=True)
+
+    st.divider()
+    
+    # --- RECOMANDĂRI AUTOMATE ---
+    st.subheader("🛡️ Măsuri și Recomandări de Securitate")
+    
+    # Analizăm ce tipuri de atacuri predomină
+    tipuri_atacuri = df['Tip_Atac'].unique()
+    
+    c_rec1, c_rec2 = st.columns([1, 2])
+    
+    with c_rec1:
+        st.info("Sistemul analizează tiparele de atac și sugerează măsuri:")
+        
+    with c_rec2:
+        if 'SQL Injection' in tipuri_atacuri:
+            st.error("🚨 **Critic: SQL Injection Detectat!**")
+            st.markdown("- **Soluție:** Folosiți 'Prepared Statements' în codul bazei de date.")
+            st.markdown("- **Acțiune:** Instalați un Web Application Firewall (WAF).")
+            
+        if 'Malware Upload' in tipuri_atacuri:
+            st.warning("☣️ **Pericol: Tentativă Upload Malware!**")
+            st.markdown("- **Soluție:** Restricționați tipurile de fișiere doar la `.jpg`, `.png`, `.pdf`.")
+            st.markdown("- **Acțiune:** Scanați toate fișierele încărcate cu un antivirus de server.")
+            
+        if 'Brute Force' in tipuri_atacuri:
+            st.warning("🔑 **Alertă: Atacuri Brute Force!**")
+            st.markdown("- **Soluție:** Implementați blocarea automată a IP-ului după 5 încercări (Activat deja).")
+            st.markdown("- **Acțiune:** Impuneți autentificarea în 2 pași (2FA) pentru profesori.")
+
+        if 'Scanning' in tipuri_atacuri:
+            st.info("👀 **Info: Scanare porturi/rute detectată.**")
+            st.markdown("- **Sfat:** Ascundeți paginile de administrare și schimbați porturile default.")
+
+        if len(tipuri_atacuri) == 0:
+            st.success("✅ Nicio vulnerabilitate critică exploatată recent. Mențineți monitorizarea.")
