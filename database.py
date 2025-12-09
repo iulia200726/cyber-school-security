@@ -2,7 +2,6 @@ import sqlite3
 import pandas as pd
 
 def create_connection():
-    # check_same_thread=False este CRUCIAL pentru ca Flask si Streamlit sa nu se blocheze reciproc
     conn = sqlite3.connect('scoala_cyber.db', check_same_thread=False)
     return conn
 
@@ -10,12 +9,15 @@ def create_tables():
     conn = create_connection()
     c = conn.cursor()
     
+    # Tabel Tipuri
     c.execute('''CREATE TABLE IF NOT EXISTS tipuri (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         nume TEXT NOT NULL,
+        metoda_detectie TEXT,
         risc TEXT NOT NULL
     )''')
     
+    # Tabel Incidente
     c.execute('''CREATE TABLE IF NOT EXISTS incidente (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         data_ora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -23,27 +25,30 @@ def create_tables():
         zona TEXT,
         descriere TEXT,
         status TEXT,
+        marime_pachet INTEGER,
         FOREIGN KEY (tip_id) REFERENCES tipuri (id)
     )''')
     
-    # Populare
+    # NOMENCLATOR
     c.execute("SELECT count(*) FROM tipuri")
     if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO tipuri (id, nume, risc) VALUES (1, 'Phishing/User Suspect', 'Mediu')")
-        c.execute("INSERT INTO tipuri (id, nume, risc) VALUES (2, 'SQL Injection', 'Critic')")
-        c.execute("INSERT INTO tipuri (id, nume, risc) VALUES (3, 'XSS Scripting', 'Critic')")
-        c.execute("INSERT INTO tipuri (id, nume, risc) VALUES (4, 'Malware Upload', 'Critic')")
-        c.execute("INSERT INTO tipuri (id, nume, risc) VALUES (5, 'Brute Force', 'Ridicat')")
-        c.execute("INSERT INTO tipuri (id, nume, risc) VALUES (6, 'Scanning', 'Mediu')")
-    
+        c.execute("INSERT INTO tipuri VALUES (1, 'SQL Injection', 'Reguli (Regex)', 'Critic')")
+        c.execute("INSERT INTO tipuri VALUES (2, 'XSS Attack', 'Reguli (Tags)', 'Ridicat')")
+        c.execute("INSERT INTO tipuri VALUES (3, 'HTML Injection', 'Reguli (Tags)', 'Mediu')")
+        c.execute("INSERT INTO tipuri VALUES (4, 'Defacement', 'Reguli (CSS)', 'Mediu')")
+        c.execute("INSERT INTO tipuri VALUES (5, 'Malware Upload', 'Reguli (Extensie)', 'Critic')")
+        c.execute("INSERT INTO tipuri VALUES (6, 'Brute Force', 'Statistica (Loguri)', 'Ridicat')")
+        c.execute("INSERT INTO tipuri VALUES (7, 'Port Scanning', 'Statistica (Threshold)', 'Scazut')")
+        c.execute("INSERT INTO tipuri VALUES (8, 'Trafic Atipic', 'Machine Learning', 'Critic')")
+
     conn.commit()
     conn.close()
 
-def add_incident(tip_id, zona, descriere, status):
+def add_incident(tip_id, zona, descriere, status, marime_pachet=0):
     conn = create_connection()
     c = conn.cursor()
-    c.execute("INSERT INTO incidente (tip_id, zona, descriere, status) VALUES (?, ?, ?, ?)",
-              (tip_id, zona, descriere, status))
+    c.execute("INSERT INTO incidente (tip_id, zona, descriere, status, marime_pachet) VALUES (?, ?, ?, ?, ?)",
+              (tip_id, zona, descriere, status, marime_pachet))
     conn.commit()
     conn.close()
 
@@ -51,7 +56,7 @@ def get_all_incidents():
     conn = create_connection()
     try:
         df = pd.read_sql_query("""
-            SELECT i.id, i.data_ora, t.nume as Tip_Atac, t.risc, i.zona, i.descriere, i.status 
+            SELECT i.id, i.data_ora, t.nume as Tip_Atac, t.metoda_detectie, t.risc, i.zona, i.descriere, i.status 
             FROM incidente i
             JOIN tipuri t ON i.tip_id = t.id
             ORDER BY i.data_ora DESC
